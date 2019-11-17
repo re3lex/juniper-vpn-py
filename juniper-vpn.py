@@ -236,6 +236,8 @@ class juniper_vpn(object):
         print('action_key')
         self.needs_2factor = True
         if self.args.push is not None:
+            print('')
+            print('Check PUSH in your phone!')
             self.key = 'push'
         elif self.args.oath:
             if self.last_action == 'key':
@@ -262,7 +264,7 @@ class juniper_vpn(object):
         if delay > 0:
             print('Waiting %.0f...' % (delay))
             time.sleep(delay)
-        self.last_connect = time.time();
+        self.last_connect = time.time()
 
         dsid = self.find_cookie('DSID').value
         action = []
