@@ -27,6 +27,8 @@ debug = False
 
 ssl._create_default_https_context = ssl._create_unverified_context
 
+okProcess = None
+
 """
 OATH code from https://github.com/bdauvergne/python-oath
 Copyright 2010, Benjamin Dauvergne
@@ -269,26 +271,32 @@ class juniper_vpn(object):
             action.append(arg)
 
         print(action)
-        p = subprocess.Popen(action, stdin=subprocess.PIPE)
+        global okProcess
+        okProcess = subprocess.Popen(action, stdin=subprocess.PIPE)
         if args.stdin is not None:
             stdin = args.stdin.replace('%DSID%', dsid)
             stdin = stdin.replace('%HOST%', self.args.host)
             print('Communicate')
-            p.communicate(input = bytes(stdin, 'utf-8'))
+            okProcess.communicate(input = bytes(stdin, 'utf-8'))
         else:
             print('Waiting')
-            ret = p.wait()
+            ret = okProcess.wait()
         print('returncode')
-        ret = p.returncode
+        ret = okProcess.returncode
         print(ret)
 
         # Openconnect specific
         if ret == 2:
             self.cj.clear(self.args.host, '/', 'DSID')
-            self.r = self.br.open(self.r.geturl())
+            okProcess = self.br.open(okProcess.geturl())
 
 def cleanup():
-    os.killpg(0, signal.SIGTERM)
+    if platform.system() == 'Windows':
+        if okProcess is not None:
+            okProcess.kill()
+    else:
+        os.killpg(0, signal.SIGTERM)
+        
 
 if __name__ == "__main__":
 
