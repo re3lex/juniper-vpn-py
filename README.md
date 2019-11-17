@@ -39,5 +39,8 @@ Need to  change module source:
  * find all lines with `fcntl` occurences and remove them.
  * in `import` line just remove `fcntl` from imports
 
+Working fine with Openconnect v8.03 on Windows 10.
+But it is not working with Openconnect v7.08 delivered with latest Openconnect-GUI.
+
 # Run
 `python juniper-vpn.py -c sample.cfg`
