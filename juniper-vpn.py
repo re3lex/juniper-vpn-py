@@ -3,7 +3,7 @@
 
 import subprocess
 import mechanize
-import cookielib
+import http.cookiejar
 import getpass
 import sys
 import os
@@ -11,7 +11,7 @@ import ssl
 import argparse
 import atexit
 import signal
-import ConfigParser
+import configparser
 import time
 import binascii
 import hmac
@@ -43,7 +43,7 @@ Copyright 2010, Benjamin Dauvergne
 """
 
 def truncated_value(h):
-    bytes = map(ord, h)
+    bytes = list(map(ord, h))
     offset = bytes[-1] & 0xf
     v = (bytes[offset] & 0x7f) << 24 | (bytes[offset+1] & 0xff) << 16 | \
             (bytes[offset+2] & 0xff) << 8 | (bytes[offset+3] & 0xff)
@@ -55,7 +55,7 @@ def dec(h,p):
     return '%0*d' % (p, v)
 
 def int2beint64(i):
-    hex_counter = hex(long(i))[2:-1]
+    hex_counter = hex(int(i))[2:-1]
     hex_counter = '0' * (16 - len(hex_counter)) + hex_counter
     bin_counter = binascii.unhexlify(hex_counter)
     return bin_counter
@@ -94,16 +94,16 @@ class juniper_vpn(object):
                 for f in args.certs.split(','):
                     cert = tncc.x509cert(f.strip())
                     if now < cert.not_before:
-                        print 'WARNING: %s is not yet valid' % f
+                        print('WARNING: %s is not yet valid' % f)
                     if now > cert.not_after:
-                        print 'WARNING: %s is expired' % f
+                        print('WARNING: %s is expired' % f)
                     certs.append(cert)
                 args.certs = [n.strip() for n in args.certs.split(',')]
             args.certs = certs
 
         self.br = mechanize.Browser()
 
-        self.cj = cookielib.LWPCookieJar()
+        self.cj = http.cookiejar.LWPCookieJar()
         self.br.set_cookiejar(self.cj)
 
         # Browser options
@@ -160,6 +160,7 @@ class juniper_vpn(object):
         self.r = self.br.open('https://' + self.args.host)
         while True:
             action = self.next_action()
+            print(action)
             if action == 'tncc':
                 self.action_tncc()
             elif action == 'login':
@@ -184,6 +185,7 @@ class juniper_vpn(object):
                     args.platform, args.hostname, args.hwaddr, args.certs);
         self.cj.set_cookie(t.get_cookie(dspreauth_cookie, dssignin_cookie))
 
+        print(self.r.geturl())
         self.r = self.br.open(self.r.geturl())
 
     def action_login(self):
@@ -194,10 +196,10 @@ class juniper_vpn(object):
 
         # Enter username/password
         if self.args.username is None:
-            self.args.username = raw_input('Username: ')
+            self.args.username = input('Username: ')
         if self.args.password is None or self.last_action == 'login':
             if self.fixed_password:
-                print 'Login failed (Invalid username or password?)'
+                print('Login failed (Invalid username or password?)')
                 sys.exit(1)
             else:
                 self.args.password = getpass.getpass('Password: ')
@@ -220,7 +222,7 @@ class juniper_vpn(object):
                 secondary_password = "".join([  self.args.pass_prefix,
                                                 self.pass_postfix])
             else:
-                print 'Secondary password postfix not provided'
+                print('Secondary password postfix not provided')
                 sys.exit(1)
             self.br.form['password#2'] = secondary_password
         if self.args.realm:
@@ -229,11 +231,15 @@ class juniper_vpn(object):
 
     def action_key(self):
         # Enter key
+        print('action_key')
         self.needs_2factor = True
-        if self.args.oath:
+        if self.args.push is not None:
+            self.key = 'push'
+        elif self.args.oath:
             if self.last_action == 'key':
-                print 'Login failed (Invalid OATH key)'
+                print('Login failed (Invalid OATH key)')
                 sys.exit(1)
+
             self.key = hotp(self.args.oath)
         elif self.key is None:
             self.key = getpass.getpass('Two-factor key:')
@@ -248,10 +254,11 @@ class juniper_vpn(object):
         self.r = self.br.submit()
 
     def action_connect(self):
+        print('action_connect')
         now = time.time()
         delay = 10.0 - (now - self.last_connect)
         if delay > 0:
-            print 'Waiting %.0f...' % (delay)
+            print('Waiting %.0f...' % (delay))
             time.sleep(delay)
         self.last_connect = time.time();
 
@@ -261,14 +268,19 @@ class juniper_vpn(object):
             arg = arg.replace('%DSID%', dsid).replace('%HOST%', self.args.host)
             action.append(arg)
 
+        print(action)
         p = subprocess.Popen(action, stdin=subprocess.PIPE)
         if args.stdin is not None:
             stdin = args.stdin.replace('%DSID%', dsid)
             stdin = stdin.replace('%HOST%', self.args.host)
-            p.communicate(input = stdin)
+            print('Communicate')
+            p.communicate(input = bytes(stdin, 'utf-8'))
         else:
+            print('Waiting')
             ret = p.wait()
+        print('returncode')
         ret = p.returncode
+        print(ret)
 
         # Openconnect specific
         if ret == 2:
@@ -291,6 +303,9 @@ if __name__ == "__main__":
                         help="Secondary password prefix")
     parser.add_argument('-o', '--oath', type=str,
                         help='OATH key for two factor authentication (hex)')
+    parser.add_argument('-push', '--push', type=str,
+                        help='Send plain text push word as two FA')
+
     parser.add_argument('-c', '--config', type=str,
                         help='Config file')
     parser.add_argument('-s', '--stdin', type=str,
@@ -324,9 +339,9 @@ if __name__ == "__main__":
         args.action = None
 
     if args.config is not None:
-        config = ConfigParser.RawConfigParser()
+        config = configparser.RawConfigParser()
         config.read(args.config)
-        for arg in ['username', 'host', 'password', 'oath', 'action', 'stdin',
+        for arg in ['username', 'host', 'password', 'oath', 'push', 'action', 'stdin',
                     'hostname', 'platform', 'hwaddr', 'certs', 'device_id',
                     'user_agent', 'pass_prefix', 'realm']:
             if args.__dict__[arg] is None:
@@ -354,7 +369,7 @@ if __name__ == "__main__":
         args.action = shlex.split(args.action)
 
     if args.host == None or args.action == []:
-        print "--host and <action> are required parameters"
+        print("--host and <action> are required parameters")
         sys.exit(1)
 
     atexit.register(cleanup)

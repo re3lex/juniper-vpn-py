@@ -4,20 +4,20 @@
 import sys
 import os
 import logging
-import StringIO
+import io
 import mechanize
-import cookielib
+import http.cookiejar
 import struct
 import socket
 import ssl
 import base64
 import collections
 import zlib
-import HTMLParser
+import html.parser
 import socket
 import netifaces
 import urlgrabber
-import urllib2
+import urllib.request, urllib.error, urllib.parse
 import platform
 import json
 import datetime
@@ -77,7 +77,7 @@ def decode_0ce4(buf, indent):
 def decode_0ce5(buf, indent):
     s = struct.unpack(str(len(buf)) + "s", buf)[0]
     logging.debug('%scmd 0ce5 (string) %d bytes', indent, len(buf))
-    s = s.rstrip('\0')
+    s = s.rstrip(b'\0')
     logging.debug('%s', s)
     return s
 
@@ -86,11 +86,11 @@ def decode_0ce7(buf, indent):
     id, s = struct.unpack(">I" + str(len(buf) - 4) + "s", buf)
     logging.debug('%scmd 0ce7 (id %08x string) %d bytes', indent, id, len(buf))
 
-    if s.startswith('COMPRESSED:'):
+    if s.startswith(bytes('COMPRESSED:', 'utf-8')):
         typ, length, data = s.split(':', 2)
         s = zlib.decompress(data)
 
-    s = s.rstrip('\0')
+    s = s.rstrip(b'\0')
     logging.debug('%s', s)
     return (id, s)
 
@@ -106,7 +106,7 @@ def decode_0cf0(buf, indent):
 def decode_0cf1(buf, indent):
     s = struct.unpack(str(len(buf)) + "s", buf)[0]
     logging.debug('%scmd 0cf1 (string) %d bytes', indent, len(buf))
-    s = s.rstrip('\0')
+    s = s.rstrip(b'\0')
     logging.debug('%s', s)
     return s
 
@@ -172,13 +172,13 @@ def encode_0ce4(buf):
 
 # 0ce5 - string without hex prefixer
 def encode_0ce5(s):
-    return encode_packet(0x0ce5, 1, struct.pack(str(len(s)) + "s", s))
+    return encode_packet(0x0ce5, 1, struct.pack(str(len(s)) + "s", bytes(s, 'utf-8')))
 
 # 0ce7 - string with hex prefixer
 def encode_0ce7(s, prefix):
     s += '\0'
     return encode_packet(0x0ce7, 1, struct.pack(">I" + str(len(s)) + "sx",
-                                prefix, s))
+                                prefix, bytes(s, 'utf-8')))
 
 # 0cf0 - encapsulation
 def encode_0cf0(buf):
@@ -187,7 +187,7 @@ def encode_0cf0(buf):
 # 0cf1 - string without hex prefixer
 def encode_0cf1(s):
     s += '\0'
-    return encode_packet(0x0ce5, 1, struct.pack(str(len(s)) + "s", s))
+    return encode_packet(0x0ce5, 1, struct.pack(str(len(s)) + "s", bytes(s, 'utf-8')))
 
 # 0cf3 - u32
 def encode_0cf3(i):
@@ -249,7 +249,7 @@ class x509cert(object):
     def __init__(self, cert_file):
         with open(cert_file, 'r') as f:
             self.data = f.read()
-        f = StringIO.StringIO(self.data)
+        f = io.StringIO(self.data)
         substrate = pyasn1_modules.pem.readPemFromFile(f)
         cert = pyasn1.codec.der.decoder.decode(substrate, pyasn1_modules.rfc2459.Certificate())[0]
         tbs = cert.getComponentByName('tbsCertificate')
@@ -274,7 +274,7 @@ class tncc(object):
 
         self.br = mechanize.Browser()
 
-        self.cj = cookielib.LWPCookieJar()
+        self.cj = http.cookiejar.LWPCookieJar()
         self.br.set_cookiejar(self.cj)
 
         # Browser options
@@ -303,7 +303,7 @@ class tncc(object):
         return None
 
     def set_cookie(self, name, value):
-        cookie = cookielib.Cookie(version=0, name=name, value=value,
+        cookie = http.cookiejar.Cookie(version=0, name=name, value=value,
                 port=None, port_specified=False, domain=self.vpn_host,
                 domain_specified=True, domain_initial_dot=False, path=self.path,
                 path_specified=True, secure=True, expires=None, discard=True,
@@ -316,13 +316,14 @@ class tncc(object):
         last_key = ''
         for line in self.r.readlines():
             line = line.strip()
+            sLine = line.decode("utf-8")
             # Note that msg is too long and gets wrapped, handle it special
             if last_key == 'msg' and len(line):
-                response['msg'] += line
+                response['msg'] += sLine
             else:
                 key = ''
                 try:
-                    key, val = line.split('=', 1)
+                    key, val = sLine.split('=', 1)
                     response[key] = val
                 except:
                     pass
@@ -333,7 +334,7 @@ class tncc(object):
         # The decompressed data is HTMLish, decode it. The value="" of each
         # tag is the data we want.
         objs = []
-        class ParamHTMLParser(HTMLParser.HTMLParser):
+        class ParamHTMLParser(html.parser.HTMLParser):
             def handle_starttag(self, tag, attrs):
                 if tag.lower() == 'param':
                     for key, value in attrs:
@@ -403,7 +404,7 @@ class tncc(object):
         msg = "<FunkMessage VendorID='2636' ProductID='1' Version='1' Platform='%s' ClientType='Agentless'> " % self.platform
         msg += "<ClientAttributes SequenceID='0'> "
         msg += "<Attribute Name='Platform' Value='%s' />" % self.platform
-        for name, value in certs.iteritems():
+        for name, value in certs.items():
             msg += "<Attribute Name='%s' Value='%s' />" % (name, value.data.strip())
             msg += "<Attribute Name='%s' Value='%s' />" % (name, value.data.strip())
         msg += "</ClientAttributes>  </FunkMessage>"
@@ -430,8 +431,8 @@ class tncc(object):
         })
 
         msg = ''
-        for policy_key, policy_val in policy_blocks.iteritems():
-            v = ''.join([ '%s=%s;' % (k, v) for k, v in policy_val.iteritems()])
+        for policy_key, policy_val in policy_blocks.items():
+            v = ''.join([ '%s=%s;' % (k, v) for k, v in policy_val.items()])
             msg += '<parameter name="%s" value="%s">' % (policy_key, v)
 
         return encode_0ce7(msg, 0xa4c18)
@@ -491,7 +492,7 @@ class tncc(object):
         if self.deviceid:
             post_attrs['deviceid'] = self.deviceid
 
-        post_data = ''.join([ '%s=%s;' % (k, v) for k, v in post_attrs.iteritems()])
+        post_data = ''.join([ '%s=%s;' % (k, v) for k, v in post_attrs.items()])
         self.r = self.br.open('https://' + self.vpn_host + self.path + 'hc/tnchcupdate.cgi', post_data)
 
         # Parse the data returned into a key/value dict
@@ -499,6 +500,7 @@ class tncc(object):
 
         # msg has the stuff we want, it's base64 encoded
         logging.debug('Receiving packet -')
+        print(response)
         msg_raw = base64.b64decode(response['msg'])
         _1, _2, msg_decoded = decode_packet(msg_raw)
 
@@ -518,17 +520,17 @@ class tncc(object):
             for obj in policy_objs:
                 if 'policy' in obj:
                     logging.debug('policy %s', obj['policy'])
-                    for key, val in obj.iteritems():
+                    for key, val in obj.items():
                         if key != 'policy':
                             logging.debug('\t%s %s', key, val)
 
         # Try to locate the required certificates
         certs = dict()
-        for cert_id, req_dns in req_certs.iteritems():
+        for cert_id, req_dns in req_certs.items():
             for cert in self.avail_certs:
                 fail = False
-                for dn_name, dn_vals in req_dns.iteritems():
-                    for name, val in dn_vals.iteritems():
+                for dn_name, dn_vals in req_dns.items():
+                    for name, val in dn_vals.items():
                         try:
                             if dn_name == 'IssuerDN':
                                 assert val in cert.issuer[name]
@@ -546,7 +548,7 @@ class tncc(object):
             if cert_id not in certs:
                 logging.warn('Could not find certificate for %s', str(req_dns))
 
-        inner = ''
+        inner = b''
         if certs:
             inner += self.gen_funk_response(certs)
         inner += self.gen_policy_response(policy_objs)
@@ -561,7 +563,7 @@ class tncc(object):
             'firsttime': '1'
         }
 
-        post_data = ''.join([ '%s=%s;' % (k, v) for k, v in post_attrs.iteritems()])
+        post_data = ''.join([ '%s=%s;' % (k, v) for k, v in post_attrs.items()])
         self.r = self.br.open('https://' + self.vpn_host + self.path + 'hc/tnchcupdate.cgi', post_data)
 
         # We have a new DSPREAUTH cookie
@@ -633,7 +635,7 @@ if __name__ == "__main__":
         dspreauth_value = sys.argv[2]
         dssignin_value = sys.argv[3]
         'TNCC ', dspreauth_value, dssignin_value
-        print t.get_cookie(dspreauth, dssignin).value
+        print(t.get_cookie(dspreauth, dssignin).value)
     else:
         sock = socket.fromfd(0, socket.AF_UNIX, socket.SOCK_SEQPACKET)
         server = tncc_server(sock, t)
