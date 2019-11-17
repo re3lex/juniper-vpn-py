@@ -16,3 +16,6 @@ tncc.py to perform host checking are contained in:
 README.authenticator
 
 Python dependencies can be found at `requirements.txt` file.
+
+# Run
+`python juniper-vpn.py -c sample.cfg`
