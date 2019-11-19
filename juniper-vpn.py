@@ -238,6 +238,7 @@ class juniper_vpn(object):
         if self.args.push is not None:
             print('')
             print('Check PUSH in your phone!')
+            print('\a')
             self.key = 'push'
         elif self.args.oath:
             if self.last_action == 'key':
@@ -291,6 +292,10 @@ class juniper_vpn(object):
         if ret == 2:
             self.cj.clear(self.args.host, '/', 'DSID')
             okProcess = self.br.open(okProcess.geturl())
+        elif ret == 1:
+            action = 'action'
+            global okProcess
+            okProcess = None
 
 def cleanup():
     if platform.system() == 'Windows':
