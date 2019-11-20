@@ -294,7 +294,6 @@ class juniper_vpn(object):
             okProcess = self.br.open(okProcess.geturl())
         elif ret == 1:
             action = 'action'
-            global okProcess
             okProcess = None
 
 def cleanup():
