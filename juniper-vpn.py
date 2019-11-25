@@ -103,6 +103,15 @@ class juniper_vpn(object):
                 args.certs = [n.strip() for n in args.certs.split(',')]
             args.certs = certs
 
+        if args.user_agent:
+            self.user_agent = args.user_agent
+        else:
+            self.user_agent = 'Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.9.0.1) Gecko/2008071615 Fedora/3.0.1-1.fc9 Firefox/3.0.1'
+
+        self.initRoutine()
+
+
+    def initRoutine(self):
         self.br = mechanize.Browser()
 
         self.cj = http.cookiejar.LWPCookieJar()
@@ -115,19 +124,13 @@ class juniper_vpn(object):
         self.br.set_handle_robots(False)
 
         # Follows refresh 0 but not hangs on refresh > 0
-        self.br.set_handle_refresh(mechanize._http.HTTPRefreshProcessor(),
-                              max_time=1)
+        self.br.set_handle_refresh(mechanize._http.HTTPRefreshProcessor(), max_time=1)
 
         # Want debugging messages?
         if debug:
             self.br.set_debug_http(True)
             self.br.set_debug_redirects(True)
             self.br.set_debug_responses(True)
-
-        if args.user_agent:
-            self.user_agent = args.user_agent
-        else:
-            self.user_agent = 'Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.9.0.1) Gecko/2008071615 Fedora/3.0.1-1.fc9 Firefox/3.0.1'
 
         self.br.addheaders = [('User-agent', self.user_agent)]
 
@@ -157,9 +160,12 @@ class juniper_vpn(object):
                 raise Exception('Unknown form type:', form.name)
         return 'tncc'
 
+    def openLandingPage(self):
+        self.r = self.br.open('https://' + self.args.host)
+
     def run(self):
         # Open landing page
-        self.r = self.br.open('https://' + self.args.host)
+        self.openLandingPage()
         while True:
             action = self.next_action()
             print(action)
@@ -293,8 +299,9 @@ class juniper_vpn(object):
             self.cj.clear(self.args.host, '/', 'DSID')
             okProcess = self.br.open(okProcess.geturl())
         elif ret == 1:
-            action = 'action'
             okProcess = None
+            self.initRoutine()
+            self.openLandingPage()
 
 def cleanup():
     if platform.system() == 'Windows':
